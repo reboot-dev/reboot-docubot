@@ -1,0 +1,4 @@
+api/**/*.ts
+api/dist/
+web/lib/api/
+dist/
