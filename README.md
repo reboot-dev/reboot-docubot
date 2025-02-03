@@ -8,11 +8,11 @@ For the impatient:
 
 ### Overview
 
-This repository contains code for Docubot, an OpenAI RAG app that ingest
+This repository contains code for Docubot, an OpenAI RAG app that ingests
 help center documents and creates a chatbot that can answer natural langauage
 questions about the docs.
 
-The [Reboot '.proto' definition](https://docs.reboot.dev/develop/schema#code-generation)
+The [Reboot '.proto' definitions](https://docs.reboot.dev/develop/schema#code-generation)
 can be found in the `api/` directory, grouped into
 subdirectories by proto package, while backend specific code can be
 found in `backend/` and front end specific code in `web/`.

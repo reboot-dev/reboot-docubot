@@ -1,4 +1,6 @@
-api/**/*.ts
-api/dist/
-web/lib/api/
-dist/
+/.rbt/
+/node_modules/
+/api/**/*.ts
+/api/dist/
+/web/lib/api/
+/dist/
