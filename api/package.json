@@ -7,7 +7,7 @@
     "prepack": "rbt protoc && tsc"
   },
   "dependencies": {
-    "@reboot-dev/reboot": "0.23.0",
+    "@reboot-dev/reboot": "0.24.0",
     "typescript": "^5.2.2"
   },
   "files": [

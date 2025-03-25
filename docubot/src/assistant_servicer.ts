@@ -1,11 +1,9 @@
-import { PartialMessage } from "@bufbuild/protobuf";
+import { Empty, PartialMessage } from "@bufbuild/protobuf";
 import {
   Assistant,
   CrawlControlLoopRequest,
   CreateRequest,
   CreateResponse,
-  CreateTaskRequest,
-  CreateTaskResponse,
   StatusRequest,
   StatusResponse,
 } from "@reboot-dev/docubot-api/docubot/assistant/v1/assistant_rbt.js";
@@ -20,6 +18,7 @@ import {
 import { createReadStream, promises as fs } from "fs";
 import OpenAI from "openai";
 import path from "path";
+import { z } from "zod";
 import { crawl } from "./crawling.js";
 
 async function ensureOpenAIVectorStoreCreated({
@@ -324,20 +323,21 @@ export class AssistantServicer extends Assistant.Servicer {
   ): Promise<PartialMessage<CreateResponse>> {
     state.name = request.name;
 
-    await this.lookup().schedule().createTask(context);
+    // NOTE: calling to OpenAI has side-effects, but more importanly
+    // we want to make sure they occur reliably (not partially), so we
+    // schedule them to run as a task.
+    await this.ref().schedule().ensureOpenAIResourcesCreated(context);
 
-    await this.lookup()
-      .schedule()
-      .crawlControlLoop(context, { url: request.url });
+    await this.ref().schedule().crawlControlLoop(context, { url: request.url });
 
     return {};
   }
 
-  async createTask(
+  async ensureOpenAIResourcesCreated(
     context: WriterContext,
     state: Assistant.State,
-    request: CreateTaskRequest
-  ): Promise<PartialMessage<CreateTaskResponse>> {
+    request: Empty
+  ): Promise<PartialMessage<Empty>> {
     state.openaiVectorStoreId = await ensureOpenAIVectorStoreCreated({
       openai: this.#openai,
       name: state.name,
@@ -368,7 +368,7 @@ export class AssistantServicer extends Assistant.Servicer {
         const { openaiVectorStoreId } = await this.state.read(context);
         return openaiVectorStoreId !== "" && openaiVectorStoreId;
       },
-      { parse: String }
+      { validate: (result) => typeof result === "string" }
     );
 
     console.log(`Crawl control loop iteration #${context.iteration}`);
@@ -394,7 +394,7 @@ export class AssistantServicer extends Assistant.Servicer {
           iteration: context.iteration,
         });
       },
-      { parse: (value) => value }
+      { parse: z.array(z.string()).parse }
     );
 
     // Attach them to the vector store (which is idempotent).

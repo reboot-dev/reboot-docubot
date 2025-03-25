@@ -19,7 +19,7 @@ service ThreadMethods {
     };
   }
 
-  rpc CreateTask(CreateTaskRequest) returns (CreateTaskResponse) {
+  rpc CreateWorkflow(CreateWorkflowRequest) returns (CreateWorkflowResponse) {
     option (rbt.v1alpha1.method).workflow = {
     };
   }
@@ -29,8 +29,8 @@ service ThreadMethods {
     };
   }
 
-  rpc QueryTask(QueryTaskRequest)
-      returns (QueryTaskResponse) {
+  rpc QueryWorkflow(QueryWorkflowRequest)
+      returns (QueryWorkflowResponse) {
     option (rbt.v1alpha1.method).workflow = {
     };
   }
@@ -64,11 +64,11 @@ message CreateRequest {
 
 message CreateResponse {}
 
-message CreateTaskRequest {
+message CreateWorkflowRequest {
   string assistant_id = 1;
 }
 
-message CreateTaskResponse {}
+message CreateWorkflowResponse {}
 
 message QueryRequest {
   string content = 1;
@@ -76,8 +76,8 @@ message QueryRequest {
 
 message QueryResponse {}
 
-message QueryTaskRequest {
+message QueryWorkflowRequest {
   uint32 index = 1;
 }
 
-message QueryTaskResponse {}
+message QueryWorkflowResponse {}
