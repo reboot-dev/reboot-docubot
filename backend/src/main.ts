@@ -4,12 +4,10 @@ import { DOCUBOT_ASSISTANT_ID } from "../../constants.js";
 import docubot from "@reboot-dev/docubot";
 
 const initialize = async (context) => {
-  await Assistant.construct({ id: DOCUBOT_ASSISTANT_ID })
-    .idempotently()
-    .create(context, {
-      name: DOCUBOT_ASSISTANT_ID,
-      url: "https://docs.reboot.dev",
-    });
+  await Assistant.idempotently().create(context, DOCUBOT_ASSISTANT_ID, {
+    name: DOCUBOT_ASSISTANT_ID,
+    url: "https://docs.reboot.dev",
+  });
 };
 
 new Application({

@@ -3,13 +3,13 @@ import { Assistant } from "@reboot-dev/docubot-api/docubot/assistant/v1/assistan
 import {
   CreateRequest,
   CreateResponse,
-  CreateTaskRequest,
+  CreateWorkflowRequest,
   MessagesRequest,
   MessagesResponse,
   Query,
   QueryRequest,
   QueryResponse,
-  QueryTaskRequest,
+  QueryWorkflowRequest,
   Thread,
 } from "@reboot-dev/docubot-api/docubot/thread/v1/thread_rbt.js";
 import {
@@ -21,6 +21,7 @@ import {
 } from "@reboot-dev/reboot";
 import OpenAI from "openai";
 import { AssistantStreamEvent } from "openai/resources/beta/assistants.js";
+import { z } from "zod";
 
 export class ThreadServicer extends Thread.Servicer {
   #openai: OpenAI;
@@ -37,9 +38,9 @@ export class ThreadServicer extends Thread.Servicer {
     state: Thread.State,
     request: CreateRequest
   ): Promise<PartialMessage<CreateResponse>> {
-    await this.lookup()
+    await this.ref()
       .schedule()
-      .createTask(context, { assistantId: request.assistantId });
+      .createWorkflow(context, { assistantId: request.assistantId });
     return {};
   }
 
@@ -58,25 +59,28 @@ export class ThreadServicer extends Thread.Servicer {
     request: QueryRequest
   ): Promise<PartialMessage<QueryResponse>> {
     state.queries.push(new Query({ content: request.content }));
-    await this.lookup()
+    await this.ref()
       .schedule()
-      .queryTask(context, {
+      .queryWorkflow(context, {
         index: state.queries.length - 1,
       });
     return {};
   }
 
-  async createTask(context: WorkflowContext, request: CreateTaskRequest) {
+  async createWorkflow(
+    context: WorkflowContext,
+    request: CreateWorkflowRequest
+  ) {
     // First wait for the assistant to be ready.
     const openaiAssistantId = await until(
       "assistant is ready",
       context,
       async () => {
-        const assistant = Assistant.lookup(request.assistantId);
+        const assistant = Assistant.ref(request.assistantId);
         const { openaiAssistantId } = await assistant.status(context);
         return openaiAssistantId !== "" && openaiAssistantId;
       },
-      { parse: String }
+      { validate: (result) => typeof result === "string" }
     );
 
     let { openaiThreadId } = await this.state.read(context);
@@ -117,11 +121,16 @@ export class ThreadServicer extends Thread.Servicer {
           openaiThreadId !== "" && { openaiAssistantId, openaiThreadId }
         );
       },
-      { parse: (value) => value }
+      {
+        parse: z.object({
+          openaiAssistantId: z.string(),
+          openaiThreadId: z.string(),
+        }).parse,
+      }
     );
   }
 
-  async queryTask(context: WorkflowContext, request: QueryTaskRequest) {
+  async queryWorkflow(context: WorkflowContext, request: QueryWorkflowRequest) {
     const index = request.index;
 
     // Ensure the OpenAI resources (assistant and thread) are ready.
@@ -144,7 +153,7 @@ export class ThreadServicer extends Thread.Servicer {
             return state.queries[index].content;
           });
       },
-      { parse: String }
+      { validate: (result) => typeof result === "string" }
     );
 
     try {
