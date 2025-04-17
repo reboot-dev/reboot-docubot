@@ -14,6 +14,7 @@ import {
   until,
   WorkflowContext,
   WriterContext,
+  allow,
 } from "@reboot-dev/reboot";
 import { createReadStream, promises as fs } from "fs";
 import OpenAI from "openai";
@@ -111,7 +112,7 @@ async function crawlAndUploadFiles({
   openai: OpenAI;
   openaiVectorStoreId: string;
   url: string;
-  iteration: bigint;
+  iteration: number;
 }) {
   // Check if we've already uploaded all of the files for this iteration. We
   // use a sentinel file that indicates that all of the files have been
@@ -224,7 +225,7 @@ async function removeStaleFiles({
 }: {
   openai: OpenAI;
   openaiVectorStoreId: string;
-  currentIteration: bigint;
+  currentIteration: number;
 }) {
   // Delete files for our VectorStore, but from previous iterations.
   const fileDeletes = [];
@@ -260,12 +261,12 @@ function createFilename({
 // Assistant-specific 'FileInfo'.
 class FileInfo {
   openaiVectorStoreId: string;
-  iteration: bigint;
+  iteration: number;
   fileIndex: bigint;
 
   constructor(
     openaiVectorStoreId: string,
-    iteration: bigint,
+    iteration: number,
     fileIndex: bigint
   ) {
     this.openaiVectorStoreId = openaiVectorStoreId;
@@ -294,7 +295,7 @@ function parseFilename(filename: string): FileInfo | null {
   }
   const [, openaiVectorStoreId, iterationStr, fileIndexStr] = match;
   try {
-    const iteration = BigInt(iterationStr);
+    const iteration = Number(iterationStr);
     const fileIndex = BigInt(fileIndexStr);
     return new FileInfo(openaiVectorStoreId, iteration, fileIndex);
   } catch (error) {
@@ -314,6 +315,10 @@ export class AssistantServicer extends Assistant.Servicer {
 
     // NOTE: expecting OPENAI_API_KEY environment variable.
     this.#openai = new OpenAI();
+  }
+
+  authorizer() {
+    return allow();
   }
 
   async create(
@@ -373,8 +378,7 @@ export class AssistantServicer extends Assistant.Servicer {
 
     console.log(`Crawl control loop iteration #${context.iteration}`);
 
-    // Use == to compare BigInts.
-    if (context.iteration == 0n) {
+    if (context.iteration === 0) {
       console.log("First iteration. Removing all old files for a fresh start.");
       await atLeastOnce("removeAllFiles", context, async () => {
         await removeAllFiles({ openai: this.#openai, openaiVectorStoreId });

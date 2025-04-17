@@ -18,6 +18,7 @@ import {
   until,
   WorkflowContext,
   WriterContext,
+  allow,
 } from "@reboot-dev/reboot";
 import OpenAI from "openai";
 import { AssistantStreamEvent } from "openai/resources/beta/assistants.js";
@@ -31,6 +32,11 @@ export class ThreadServicer extends Thread.Servicer {
 
     // NOTE: expecting OPENAI_API_KEY environment variable.
     this.#openai = new OpenAI();
+  }
+
+  authorizer() {
+    // TODO: introduce proper authorization.
+    return allow();
   }
 
   async create(
