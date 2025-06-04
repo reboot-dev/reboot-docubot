@@ -9,7 +9,7 @@ For the impatient:
 ### Overview
 
 This repository contains code for Docubot, an OpenAI RAG app that ingests
-help center documents and creates a chatbot that can answer natural langauage
+help center documents and creates a chatbot that can answer natural language
 questions about the docs.
 
 The [Reboot '.proto' definitions](https://docs.reboot.dev/develop/schema#code-generation)

@@ -328,7 +328,7 @@ export class AssistantServicer extends Assistant.Servicer {
   ): Promise<PartialMessage<CreateResponse>> {
     state.name = request.name;
 
-    // NOTE: calling to OpenAI has side-effects, but more importanly
+    // NOTE: calling to OpenAI has side-effects, but more importantly
     // we want to make sure they occur reliably (not partially), so we
     // schedule them to run as a task.
     await this.ref().schedule().ensureOpenAIResourcesCreated(context);
