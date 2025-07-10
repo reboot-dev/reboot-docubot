@@ -17,7 +17,7 @@ else
   npm install
 fi
 
-npx rbt protoc
+npx rbt generate
 
 npx tsc --build
 
