@@ -22,16 +22,16 @@
 ########################################################################
 
 # Find '.proto' files in 'api/'.
-protoc api/
+generate api/
 
 # Generate code for a React frontend and TypeScript/nodejs backend.
-protoc --react=web/lib/api
-protoc --nodejs=api
+generate --react=web/lib/api
+generate --nodejs=api
 
 # This project requires the use of the 'customConditions' tsconfig option.
 # This options is only available with moduleResolution of 'node16', 'nodenext',
 # or 'bundler'. We choose 'nodenext' which requires imports with file extensions.
-protoc --nodejs-extensions
+generate --nodejs-extensions
 
 dev run --name=docubot
 
