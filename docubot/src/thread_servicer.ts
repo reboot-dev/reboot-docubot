@@ -146,18 +146,16 @@ export class ThreadServicer extends Thread.Servicer {
     // Wait until we are the "active" index because OpenAI does not
     // allow you to perform more than one run at a time.
     const content = await until(
-      `our turn`,
+      `Our turn`,
       context,
       async () => {
-        return await this.state
-          .unidempotently()
-          .write(context, async (state) => {
-            if (state.activeIndex != index) {
-              return false;
-            }
-            state.queries[index].started = true;
-            return state.queries[index].content;
-          });
+        return await this.state.always().write(context, async (state) => {
+          if (state.activeIndex != index) {
+            return false;
+          }
+          state.queries[index].started = true;
+          return state.queries[index].content;
+        });
       },
       { validate: (result) => typeof result === "string" }
     );

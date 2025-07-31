@@ -2,6 +2,7 @@ import { Empty, PartialMessage } from "@bufbuild/protobuf";
 import {
   Assistant,
   CrawlControlLoopRequest,
+  CrawlControlLoopResponse,
   CreateRequest,
   CreateResponse,
   StatusRequest,
@@ -9,7 +10,6 @@ import {
 } from "@reboot-dev/docubot-api/docubot/assistant/v1/assistant_rbt.js";
 import {
   atLeastOnce,
-  Loop,
   ReaderContext,
   until,
   WorkflowContext,
@@ -364,7 +364,7 @@ export class AssistantServicer extends Assistant.Servicer {
   async crawlControlLoop(
     context: WorkflowContext,
     request: CrawlControlLoopRequest
-  ): Promise<Loop> {
+  ): Promise<PartialMessage<CrawlControlLoopResponse>> {
     const openaiVectorStoreId = await until(
       `Vector store created`,
       context,
@@ -376,81 +376,75 @@ export class AssistantServicer extends Assistant.Servicer {
       { validate: (result) => typeof result === "string" }
     );
 
-    console.log(`Crawl control loop iteration #${context.iteration}`);
+    await atLeastOnce(`Remove all files`, context, async () => {
+      console.log("Removing all old files for a fresh start.");
+      await removeAllFiles({ openai: this.#openai, openaiVectorStoreId });
+    });
 
-    if (context.iteration === 0) {
-      console.log("First iteration. Removing all old files for a fresh start.");
-      await atLeastOnce("removeAllFiles", context, async () => {
-        await removeAllFiles({ openai: this.#openai, openaiVectorStoreId });
-      });
-    }
+    // Run control loop every hour.
+    const interval = { hours: 1 };
 
-    // Ensure that the crawl has started at least once and return all file ids
-    // if it has.
-    const fileIds = await atLeastOnce(
-      `Crawl and upload files each iteration #${context.iteration}`,
-      context,
-      async () => {
-        return await crawlAndUploadFiles({
-          openai: this.#openai,
-          openaiVectorStoreId,
-          url: request.url,
-          iteration: context.iteration,
+    for await (const iteration of context.loop("Crawl", { interval })) {
+      console.log(`Crawl control loop iteration #${iteration}`);
+
+      // Ensure that the crawl has started at least once per
+      // iteration.
+      const fileIds = await atLeastOnce(
+        `Crawl and upload files`,
+        context,
+        async () => {
+          return await crawlAndUploadFiles({
+            openai: this.#openai,
+            openaiVectorStoreId,
+            url: request.url,
+            iteration,
+          });
+        },
+        { parse: z.array(z.string()).parse }
+      );
+
+      // Attach them to the vector store (which is idempotent).
+      // NOTE: Files cannot be added concurrently, or a 409 is triggered ("The
+      // vector store was updated by another process.")
+      for (const fileId of fileIds) {
+        await this.#openai.beta.vectorStores.files.create(openaiVectorStoreId, {
+          file_id: fileId,
         });
-      },
-      { parse: z.array(z.string()).parse }
-    );
+      }
 
-    // Attach them to the vector store (which is idempotent).
-    // NOTE: Files cannot be added concurrently, or a 409 is triggered ("The
-    // vector store was updated by another process.")
-    for (const fileId of fileIds) {
-      await this.#openai.beta.vectorStores.files.create(openaiVectorStoreId, {
-        file_id: fileId,
-      });
-    }
+      // Wait for all of them to be available.
+      await Promise.all(
+        fileIds.map(async (fileId) => {
+          while (true) {
+            const fileForStatus =
+              await this.#openai.beta.vectorStores.files.retrieve(
+                openaiVectorStoreId,
+                fileId
+              );
+            if (fileForStatus.status !== "in_progress") {
+              console.log(`${fileId} is ready.`);
+              break;
+            }
+            console.log(`Waiting for ${fileId} to be ready...`);
 
-    // Wait for all of them to be available.
-    await Promise.all(
-      fileIds.map(async (fileId) => {
-        while (true) {
-          const fileForStatus =
-            await this.#openai.beta.vectorStores.files.retrieve(
-              openaiVectorStoreId,
-              fileId
-            );
-          if (fileForStatus.status !== "in_progress") {
-            console.log(`${fileId} is ready.`);
-            break;
+            await sleep({ ms: 500 });
           }
-          console.log(`waiting for ${fileId} to be ready...`);
+        })
+      );
 
-          await sleep({ ms: 500 });
-        }
-      })
-    );
-
-    // Detach and delete stale file(s).
-    atLeastOnce(
-      `Remove stale files each iteration #${context.iteration}`,
-      context,
-      async () => {
+      // Detach and delete stale file(s) each iteration.
+      atLeastOnce(`Remove stale files`, context, async () => {
         await removeStaleFiles({
           openai: this.#openai,
           openaiVectorStoreId,
-          currentIteration: context.iteration,
+          currentIteration: iteration,
         });
-      }
-    );
+      });
 
-    const when = new Date();
-    const hoursToWait = 1;
-    when.setHours(when.getHours() + hoursToWait);
+      console.log(`Crawl control loop complete. Next crawl in 1 hour(s)`);
+    }
 
-    console.log(
-      `Crawl control loop complete. Next crawl in ${hoursToWait} hour(s).`
-    );
-    return new Loop({ when });
+    return {};
   }
 
   async status(
