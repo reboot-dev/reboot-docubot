@@ -9,12 +9,12 @@ import {
   StatusResponse,
 } from "@reboot-dev/docubot-api/docubot/assistant/v1/assistant_rbt.js";
 import {
+  allow,
   atLeastOnce,
   ReaderContext,
   until,
   WorkflowContext,
   WriterContext,
-  allow,
 } from "@reboot-dev/reboot";
 import { createReadStream, promises as fs } from "fs";
 import OpenAI from "openai";
@@ -323,10 +323,9 @@ export class AssistantServicer extends Assistant.Servicer {
 
   async create(
     context: WriterContext,
-    state: Assistant.State,
     request: CreateRequest
   ): Promise<PartialMessage<CreateResponse>> {
-    state.name = request.name;
+    this.state.name = request.name;
 
     // NOTE: calling to OpenAI has side-effects, but more importantly
     // we want to make sure they occur reliably (not partially), so we
@@ -340,22 +339,21 @@ export class AssistantServicer extends Assistant.Servicer {
 
   async ensureOpenAIResourcesCreated(
     context: WriterContext,
-    state: Assistant.State,
     request: Empty
   ): Promise<PartialMessage<Empty>> {
-    state.openaiVectorStoreId = await ensureOpenAIVectorStoreCreated({
+    this.state.openaiVectorStoreId = await ensureOpenAIVectorStoreCreated({
       openai: this.#openai,
-      name: state.name,
+      name: this.state.name,
     });
 
-    state.openaiAssistantId = await ensureOpenAIAssistantCreated({
+    this.state.openaiAssistantId = await ensureOpenAIAssistantCreated({
       openai: this.#openai,
-      name: state.name,
-      openaiVectorStoreId: state.openaiVectorStoreId,
+      name: this.state.name,
+      openaiVectorStoreId: this.state.openaiVectorStoreId,
     });
 
     console.log(
-      `OpenAI assistant created with ID '${state.openaiAssistantId}'`
+      `OpenAI assistant created with ID '${this.state.openaiAssistantId}'`
     );
 
     return {};
@@ -370,7 +368,7 @@ export class AssistantServicer extends Assistant.Servicer {
       context,
       async () => {
         console.log(`Waiting until vector store created ...`);
-        const { openaiVectorStoreId } = await this.state.read(context);
+        const { openaiVectorStoreId } = await this.ref().read(context);
         return openaiVectorStoreId !== "" && openaiVectorStoreId;
       },
       { validate: (result) => typeof result === "string" }
@@ -449,9 +447,8 @@ export class AssistantServicer extends Assistant.Servicer {
 
   async status(
     context: ReaderContext,
-    state: Assistant.State,
     request: StatusRequest
   ): Promise<PartialMessage<StatusResponse>> {
-    return { openaiAssistantId: state.openaiAssistantId };
+    return { openaiAssistantId: this.state.openaiAssistantId };
   }
 }
