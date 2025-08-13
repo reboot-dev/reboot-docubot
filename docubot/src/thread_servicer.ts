@@ -13,18 +13,18 @@ import {
   Thread,
 } from "@reboot-dev/docubot-api/docubot/thread/v1/thread_rbt.js";
 import {
+  allow,
   atMostOnce,
   ReaderContext,
   until,
   WorkflowContext,
   WriterContext,
-  allow,
 } from "@reboot-dev/reboot";
 import OpenAI from "openai";
 import { AssistantStreamEvent } from "openai/resources/beta/assistants.js";
 import { z } from "zod";
 
-export class ThreadServicer extends Thread.Servicer {
+export class ThreadServicer extends Thread.singleton.Servicer {
   #openai: OpenAI;
 
   constructor() {
