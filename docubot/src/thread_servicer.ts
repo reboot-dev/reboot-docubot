@@ -22,7 +22,7 @@ import {
 } from "@reboot-dev/reboot";
 import OpenAI from "openai";
 import { AssistantStreamEvent } from "openai/resources/beta/assistants.js";
-import { z } from "zod";
+import { z } from "zod/v4";
 
 export class ThreadServicer extends Thread.singleton.Servicer {
   #openai: OpenAI;
@@ -86,7 +86,7 @@ export class ThreadServicer extends Thread.singleton.Servicer {
         const { openaiAssistantId } = await assistant.status(context);
         return openaiAssistantId !== "" && openaiAssistantId;
       },
-      { validate: (result) => typeof result === "string" }
+      { schema: z.string() }
     );
 
     let { openaiThreadId } = await this.state.read(context);
@@ -128,10 +128,10 @@ export class ThreadServicer extends Thread.singleton.Servicer {
         );
       },
       {
-        parse: z.object({
+        schema: z.object({
           openaiAssistantId: z.string(),
           openaiThreadId: z.string(),
-        }).parse,
+        }),
       }
     );
   }
@@ -157,7 +157,7 @@ export class ThreadServicer extends Thread.singleton.Servicer {
           return state.queries[index].content;
         });
       },
-      { validate: (result) => typeof result === "string" }
+      { schema: z.string() }
     );
 
     try {

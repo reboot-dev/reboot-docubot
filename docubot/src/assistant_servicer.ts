@@ -19,7 +19,7 @@ import {
 import { createReadStream, promises as fs } from "fs";
 import OpenAI from "openai";
 import path from "path";
-import { z } from "zod";
+import { z } from "zod/v4";
 import { crawl } from "./crawling.js";
 
 async function ensureOpenAIVectorStoreCreated({
@@ -371,7 +371,7 @@ export class AssistantServicer extends Assistant.Servicer {
         const { openaiVectorStoreId } = await this.ref().read(context);
         return openaiVectorStoreId !== "" && openaiVectorStoreId;
       },
-      { validate: (result) => typeof result === "string" }
+      { schema: z.string() }
     );
 
     await atLeastOnce(`Remove all files`, context, async () => {
@@ -398,7 +398,7 @@ export class AssistantServicer extends Assistant.Servicer {
             iteration,
           });
         },
-        { parse: z.array(z.string()).parse }
+        { schema: z.array(z.string()) }
       );
 
       // Attach them to the vector store (which is idempotent).
