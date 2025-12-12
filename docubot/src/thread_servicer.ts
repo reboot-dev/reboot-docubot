@@ -25,13 +25,13 @@ import { AssistantStreamEvent } from "openai/resources/beta/assistants.js";
 import { z } from "zod/v4";
 
 export class ThreadServicer extends Thread.singleton.Servicer {
-  #openai: OpenAI;
+  static #openai: OpenAI;
 
   constructor() {
     super();
 
     // NOTE: expecting OPENAI_API_KEY environment variable.
-    this.#openai = new OpenAI();
+    ThreadServicer.#openai = new OpenAI();
   }
 
   authorizer() {
@@ -73,7 +73,7 @@ export class ThreadServicer extends Thread.singleton.Servicer {
     return {};
   }
 
-  async createWorkflow(
+  static async createWorkflow(
     context: WorkflowContext,
     request: CreateWorkflowRequest
   ) {
@@ -89,13 +89,13 @@ export class ThreadServicer extends Thread.singleton.Servicer {
       { schema: z.string() }
     );
 
-    let { openaiThreadId } = await this.state.read(context);
+    let { openaiThreadId } = await Thread.ref().read(context);
 
     // TODO: need to see if we already created the thread by listing,
     // which unfortunately is a missing API:
     // https://community.openai.com/t/list-and-delete-all-threads/505823/8
     if (openaiThreadId === "") {
-      const thread = await this.#openai.beta.threads.create({
+      const thread = await ThreadServicer.#openai.beta.threads.create({
         metadata: {
           docubotThreadStateId: context.stateId,
         },
@@ -103,10 +103,12 @@ export class ThreadServicer extends Thread.singleton.Servicer {
 
       openaiThreadId = thread.id;
 
-      await this.state.write("save ids", context, async (state) => {
-        state.openaiAssistantId = openaiAssistantId;
-        state.openaiThreadId = openaiThreadId;
-      });
+      await Thread.ref()
+        .perWorkflow("Save ids")
+        .write(context, async (state) => {
+          state.openaiAssistantId = openaiAssistantId;
+          state.openaiThreadId = openaiThreadId;
+        });
     }
 
     return {};
@@ -114,12 +116,12 @@ export class ThreadServicer extends Thread.singleton.Servicer {
 
   // Helper that waits until the OpenAI resources (assistant and
   // thread) are ready.
-  async #untilOpenAIResourcesReady(context: WorkflowContext) {
+  static async #untilOpenAIResourcesReady(context: WorkflowContext) {
     return await until(
       "OpenAI resources ready",
       context,
       async () => {
-        const { openaiAssistantId, openaiThreadId } = await this.state.read(
+        const { openaiAssistantId, openaiThreadId } = await Thread.ref().read(
           context
         );
         return (
@@ -136,12 +138,15 @@ export class ThreadServicer extends Thread.singleton.Servicer {
     );
   }
 
-  async queryWorkflow(context: WorkflowContext, request: QueryWorkflowRequest) {
+  static async queryWorkflow(
+    context: WorkflowContext,
+    request: QueryWorkflowRequest
+  ) {
     const index = request.index;
 
     // Ensure the OpenAI resources (assistant and thread) are ready.
     const { openaiAssistantId, openaiThreadId } =
-      await this.#untilOpenAIResourcesReady(context);
+      await ThreadServicer.#untilOpenAIResourcesReady(context);
 
     // Wait until we are the "active" index because OpenAI does not
     // allow you to perform more than one run at a time.
@@ -149,27 +154,36 @@ export class ThreadServicer extends Thread.singleton.Servicer {
       `Our turn`,
       context,
       async () => {
-        return await this.state.always().write(context, async (state) => {
-          if (state.activeIndex != index) {
-            return false;
-          }
-          state.queries[index].started = true;
-          return state.queries[index].content;
-        });
+        return await Thread.ref()
+          .always()
+          .write(
+            context,
+            async (state) => {
+              if (state.activeIndex != index) {
+                return false;
+              }
+              state.queries[index].started = true;
+              return state.queries[index].content;
+            },
+            { schema: z.union([z.string(), z.literal(false)]) }
+          );
       },
       { schema: z.string() }
     );
 
     try {
       await atMostOnce(`run`, context, async () => {
-        await this.#openai.beta.threads.messages.create(openaiThreadId, {
-          role: "user",
-          content,
-        });
+        await ThreadServicer.#openai.beta.threads.messages.create(
+          openaiThreadId,
+          {
+            role: "user",
+            content,
+          }
+        );
 
         let delta = 0;
 
-        const stream = await this.#openai.beta.threads.runs.create(
+        const stream = await ThreadServicer.#openai.beta.threads.runs.create(
           openaiThreadId,
           {
             assistant_id: openaiAssistantId,
@@ -202,17 +216,17 @@ export class ThreadServicer extends Thread.singleton.Servicer {
               continue;
             }
 
-            await this.state.write(
-              `append delta #${delta++}`,
-              context,
-              async (state) => {
+            await Thread.ref()
+              .perWorkflow(`Append delta #${delta++}`)
+              .write(context, async (state) => {
                 state.queries[index].response += content;
-              }
-            );
+              });
           } else if (event.event === "thread.message.completed") {
-            await this.state.write("complete", context, async (state) => {
-              state.queries[index].completed = true;
-            });
+            await Thread.ref()
+              .perWorkflow("Complete")
+              .write(context, async (state) => {
+                state.queries[index].completed = true;
+              });
             break;
           } else if (event.event === "error") {
             const error = (event as AssistantStreamEvent.ErrorEvent).data;
@@ -239,16 +253,18 @@ export class ThreadServicer extends Thread.singleton.Servicer {
     // Increment the active index so the next query can run, also
     // handling possible hard failures while trying to do the OpenAI
     // run above.
-    await this.state.write("finish", context, async (state) => {
-      if (!state.queries[index].completed) {
-        // NOTE: we don't include the error in `response` in the event
-        // that it has any sensitive information, but we do `console.warn`
-        // above for developers.
-        state.queries[index].response += "...encountered an error!";
-        state.queries[index].completed = true;
-      }
-      state.activeIndex++;
-    });
+    await Thread.ref()
+      .perWorkflow("Finish")
+      .write(context, async (state) => {
+        if (!state.queries[index].completed) {
+          // NOTE: we don't include the error in `response` in the event
+          // that it has any sensitive information, but we do `console.warn`
+          // above for developers.
+          state.queries[index].response += "...encountered an error!";
+          state.queries[index].completed = true;
+        }
+        state.activeIndex++;
+      });
 
     return {};
   }
