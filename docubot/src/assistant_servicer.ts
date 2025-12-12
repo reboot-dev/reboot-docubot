@@ -308,13 +308,13 @@ function sleep({ ms }: { ms: number }): Promise<void> {
 }
 
 export class AssistantServicer extends Assistant.Servicer {
-  #openai: OpenAI;
+  static #openai: OpenAI;
 
   constructor() {
     super();
 
     // NOTE: expecting OPENAI_API_KEY environment variable.
-    this.#openai = new OpenAI();
+    AssistantServicer.#openai = new OpenAI();
   }
 
   authorizer() {
@@ -342,12 +342,12 @@ export class AssistantServicer extends Assistant.Servicer {
     request: Empty
   ): Promise<PartialMessage<Empty>> {
     this.state.openaiVectorStoreId = await ensureOpenAIVectorStoreCreated({
-      openai: this.#openai,
+      openai: AssistantServicer.#openai,
       name: this.state.name,
     });
 
     this.state.openaiAssistantId = await ensureOpenAIAssistantCreated({
-      openai: this.#openai,
+      openai: AssistantServicer.#openai,
       name: this.state.name,
       openaiVectorStoreId: this.state.openaiVectorStoreId,
     });
@@ -359,7 +359,7 @@ export class AssistantServicer extends Assistant.Servicer {
     return {};
   }
 
-  async crawlControlLoop(
+  static async crawlControlLoop(
     context: WorkflowContext,
     request: CrawlControlLoopRequest
   ): Promise<PartialMessage<CrawlControlLoopResponse>> {
@@ -368,7 +368,7 @@ export class AssistantServicer extends Assistant.Servicer {
       context,
       async () => {
         console.log(`Waiting until vector store created ...`);
-        const { openaiVectorStoreId } = await this.ref().read(context);
+        const { openaiVectorStoreId } = await Assistant.ref().read(context);
         return openaiVectorStoreId !== "" && openaiVectorStoreId;
       },
       { schema: z.string() }
@@ -376,7 +376,10 @@ export class AssistantServicer extends Assistant.Servicer {
 
     await atLeastOnce(`Remove all files`, context, async () => {
       console.log("Removing all old files for a fresh start.");
-      await removeAllFiles({ openai: this.#openai, openaiVectorStoreId });
+      await removeAllFiles({
+        openai: AssistantServicer.#openai,
+        openaiVectorStoreId,
+      });
     });
 
     // Run control loop every hour.
@@ -392,7 +395,7 @@ export class AssistantServicer extends Assistant.Servicer {
         context,
         async () => {
           return await crawlAndUploadFiles({
-            openai: this.#openai,
+            openai: AssistantServicer.#openai,
             openaiVectorStoreId,
             url: request.url,
             iteration,
@@ -405,9 +408,12 @@ export class AssistantServicer extends Assistant.Servicer {
       // NOTE: Files cannot be added concurrently, or a 409 is triggered ("The
       // vector store was updated by another process.")
       for (const fileId of fileIds) {
-        await this.#openai.beta.vectorStores.files.create(openaiVectorStoreId, {
-          file_id: fileId,
-        });
+        await AssistantServicer.#openai.beta.vectorStores.files.create(
+          openaiVectorStoreId,
+          {
+            file_id: fileId,
+          }
+        );
       }
 
       // Wait for all of them to be available.
@@ -415,7 +421,7 @@ export class AssistantServicer extends Assistant.Servicer {
         fileIds.map(async (fileId) => {
           while (true) {
             const fileForStatus =
-              await this.#openai.beta.vectorStores.files.retrieve(
+              await AssistantServicer.#openai.beta.vectorStores.files.retrieve(
                 openaiVectorStoreId,
                 fileId
               );
@@ -433,7 +439,7 @@ export class AssistantServicer extends Assistant.Servicer {
       // Detach and delete stale file(s) each iteration.
       atLeastOnce(`Remove stale files`, context, async () => {
         await removeStaleFiles({
-          openai: this.#openai,
+          openai: AssistantServicer.#openai,
           openaiVectorStoreId,
           currentIteration: iteration,
         });
