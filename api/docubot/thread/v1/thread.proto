@@ -29,8 +29,7 @@ service ThreadMethods {
     };
   }
 
-  rpc QueryWorkflow(QueryWorkflowRequest)
-      returns (QueryWorkflowResponse) {
+  rpc QueryWorkflow(QueryWorkflowRequest) returns (QueryWorkflowResponse) {
     option (rbt.v1alpha1.method).workflow = {
     };
   }
